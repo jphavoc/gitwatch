@@ -118,7 +118,7 @@ is_command () { # Tests for the availability of a command
 
 # if custom bin names are given for git or inotifywait, use those; otherwise fall back to "git" and "inotifywait"
 if [ -z "$GW_GIT_BIN" ]; then GIT="git"; else GIT="$GW_GIT_BIN"; fi
-if [ -z "$GW_INW_BIN" ]; then INW="inotifywait"; else INW="$GW_INW_BIN"; fi
+if [ -z "$GW_INW_BIN" ]; then INW="fswatch -1 -r -x --exclude .DS_Store --exclude .git --event Created --event Removed --event MovedTo --event MovedFrom --event Renamed --event Updated"; else INW="$GW_INW_BIN"; fi
 
 # Check availability of selected binaries and die if not met
 for cmd in "$GIT" "$INW"; do
@@ -127,16 +127,16 @@ done
 unset cmd
 
 # Expand the path to the target to absolute path
-IN=$(readlink -f "$1")
+IN=$(greadlink -f "$1")
 
-if [ -d $1 ]; then # if the target is a directory
+if [[ -d $1 ]]; then # if the target is a directory
     TARGETDIR=$(sed -e "s/\/*$//" <<<"$IN") # dir to CD into before using git commands: trim trailing slash, if any
-    INCOMMAND="$INW --exclude=\"^${TARGETDIR}/.git\" -qqr -e close_write,move,delete,create $TARGETDIR" # construct inotifywait-commandline
+    INCOMMAND="$INW $TARGETDIR" # construct inotifywait-commandline
     GIT_ADD_ARGS="." # add "." (CWD) recursively to index
     GIT_COMMIT_ARGS="-a" # add -a switch to "commit" call just to be sure
-elif [ -f $1 ]; then # if the target is a single file
+elif [[ -f $1 ]]; then # if the target is a single file
     TARGETDIR=$(dirname "$IN") # dir to CD into before using git commands: extract from file name
-    INCOMMAND="$INW -qq -e close_write,move,delete $IN" # construct inotifywait-commandline
+    INCOMMAND="$INW $IN" # construct inotifywait-commandline
     GIT_ADD_ARGS="$IN" # add only the selected file to index
     GIT_COMMIT_ARGS="" # no need to add anything more to "commit" call
 else
@@ -150,7 +150,7 @@ if ! grep "%d" > /dev/null <<< "$COMMITMSG"; then # if commitmsg didnt contain %
     FORMATTED_COMMITMSG="$COMMITMSG" # save (unchanging) commit message
 fi
 
-cd $TARGETDIR # CD into right dir
+cd "$TARGETDIR" # CD into right dir
 
 if [ -n "$REMOTE" ]; then # are we pushing to a remote?
     if [ -z "$BRANCH" ]; then # Do we have a branch set to push to ?
@@ -169,13 +169,16 @@ else
 fi
 
 # main program loop: wait for changes and commit them
-while true; do
-    $INCOMMAND # wait for changes
+while [[ true ]]; do
+    
+    # wait for changes
+    $INCOMMAND
+
     sleep $SLEEP_TIME # wait some more seconds to give apps time to write out all changes
     if [ -n "$DATE_FMT" ]; then
         FORMATTED_COMMITMSG="$(sed "s/%d/$(date "$DATE_FMT")/" <<< "$COMMITMSG")" # splice the formatted date-time into the commit message
     fi
-    cd $TARGETDIR # CD into right dir
+    cd "$TARGETDIR" # CD into right dir
     $GIT add $GIT_ADD_ARGS # add file(s) to index
     $GIT commit $GIT_COMMIT_ARGS -m"$FORMATTED_COMMITMSG" # construct commit message and commit
 
